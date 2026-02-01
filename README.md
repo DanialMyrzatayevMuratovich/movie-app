@@ -57,6 +57,7 @@ npm run dev
 ```
 
 # 📂 Project structure
+```
 .
 ├── backend
 │   ├── cmd
@@ -127,6 +128,7 @@ npm run dev
     │       ├── Profile.vue
     │       └── SeatSelection.vue
     └── vite.config.js
+```    
 
 # 📄 License
 The project is distributed under the MIT license.
