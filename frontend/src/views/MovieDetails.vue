@@ -14,8 +14,8 @@
         <div class="movie-hero-content">
           <div class="movie-poster-large">
             <img
-              v-if="movie.posterFileId"
-              :src="`http://localhost:8080/api/files/${movie.posterFileId}`"
+              v-if="movie.posterUrl"
+              :src="movie.posterUrl"
               :alt="movie.title"
               @error="handleImageError"
             />
@@ -139,6 +139,16 @@
         </div>
       </div>
     </div>
+
+    <div v-else class="error-state">
+      <div class="container">
+        <h2>Фильм не найден</h2>
+        <p>Попробуйте вернуться на главную страницу</p>
+        <router-link to="/" class="btn btn-primary">
+          На главную
+        </router-link>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -190,11 +200,13 @@ const groupedShowtimes = computed(() => {
 })
 
 const fetchMovie = async () => {
+  loading.value = true
   try {
     const response = await api.getMovieDetails(route.params.id)
     movie.value = response.data.data.movie || response.data.data
   } catch (error) {
     console.error('Failed to fetch movie:', error)
+    movie.value = null
   } finally {
     loading.value = false
   }
@@ -245,6 +257,10 @@ const formatShortDate = (dateStr) => {
 
 const handleImageError = (e) => {
   e.target.style.display = 'none'
+  const placeholder = e.target.nextElementSibling
+  if (placeholder) {
+    placeholder.style.display = 'flex'
+  }
 }
 
 onMounted(() => {
@@ -298,12 +314,14 @@ onMounted(() => {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background-color: var(--dark-lighter);
 }
 
 .movie-poster-large img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .poster-placeholder {
@@ -561,6 +579,21 @@ onMounted(() => {
 .review-comment {
   color: var(--text);
   line-height: 1.6;
+}
+
+.error-state {
+  text-align: center;
+  padding: 100px 20px;
+}
+
+.error-state h2 {
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+
+.error-state p {
+  color: var(--text-gray);
+  margin-bottom: 24px;
 }
 
 @media (max-width: 768px) {

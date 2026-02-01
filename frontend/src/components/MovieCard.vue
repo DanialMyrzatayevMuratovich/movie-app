@@ -2,13 +2,14 @@
   <div class="movie-card" @click="goToMovie">
     <div class="movie-poster">
       <img 
-        v-if="movie.posterFileId" 
-        :src="`http://localhost:8080/api/files/${movie.posterFileId}`" 
+        v-if="movie.posterUrl" 
+        :src="movie.posterUrl" 
         :alt="movie.title"
         @error="handleImageError"
       />
       <div v-else class="poster-placeholder">
         <span class="poster-icon">🎬</span>
+        <div class="poster-title">{{ movie.title }}</div>
       </div>
 
       <!-- Rating Badge -->
@@ -71,11 +72,20 @@ const formats = computed(() => {
 })
 
 const goToMovie = () => {
-  router.push(`/movie/${props.movie._id}`)
+  if (props.movie && props.movie._id) {
+    router.push(`/movie/${props.movie._id}`)
+  } else {
+    console.error('Movie ID is missing:', props.movie)
+  }
 }
 
 const handleImageError = (e) => {
+  // Скрыть битое изображение и показать placeholder
   e.target.style.display = 'none'
+  const placeholder = e.target.nextElementSibling
+  if (placeholder) {
+    placeholder.style.display = 'flex'
+  }
 }
 </script>
 
@@ -116,14 +126,26 @@ const handleImageError = (e) => {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, var(--dark-lighter) 0%, var(--dark) 100%);
+  padding: 20px;
+  text-align: center;
 }
 
 .poster-icon {
   font-size: 64px;
-  opacity: 0.3;
+  opacity: 0.5;
+  margin-bottom: 12px;
+}
+
+.poster-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--text);
+  opacity: 0.7;
+  line-height: 1.3;
 }
 
 .rating-badge {
@@ -138,6 +160,7 @@ const handleImageError = (e) => {
   gap: 4px;
   font-weight: bold;
   backdrop-filter: blur(10px);
+  z-index: 2;
 }
 
 .star {
@@ -150,6 +173,7 @@ const handleImageError = (e) => {
   left: 12px;
   display: flex;
   gap: 8px;
+  z-index: 2;
 }
 
 .badge-format {

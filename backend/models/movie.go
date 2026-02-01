@@ -21,7 +21,8 @@ type Movie struct {
 	IMDBRating     float64            `bson:"imdbRating" json:"imdbRating"`
 	Language       []string           `bson:"language" json:"language"` // ["Kazakh", "Russian", "English"]
 	Subtitles      []string           `bson:"subtitles" json:"subtitles"`
-	PosterFileID   primitive.ObjectID `bson:"posterFileId,omitempty" json:"posterFileId,omitempty"`   // GridFS
+	PosterFileID   primitive.ObjectID `bson:"posterFileId,omitempty" json:"posterFileId,omitempty"` // GridFS
+	PosterURL      string             `bson:"posterUrl,omitempty" json:"posterUrl,omitempty"`
 	TrailerFileID  primitive.ObjectID `bson:"trailerFileId,omitempty" json:"trailerFileId,omitempty"` // GridFS
 	IsActive       bool               `bson:"isActive" json:"isActive"`
 	AgeRestriction int                `bson:"ageRestriction" json:"ageRestriction"`

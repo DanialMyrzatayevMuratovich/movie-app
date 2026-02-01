@@ -23,10 +23,10 @@ func main() {
 	log.Println("📊 Creating indexes...")
 	scripts.CreateIndexes()
 
-	// 4. Заполнить базу данными 
+	// 4. Заполнить базу данными
 	// ⚠️ Раскомментируй только при первом запуске!
-	// log.Println("🌱 Seeding database...")
-	// scripts.SeedDatabase()
+	//log.Println("🌱 Seeding database...")
+	//scripts.SeedDatabase()
 
 	// 5. Настроить Gin
 	// Режим (можно поставить gin.ReleaseMode для продакшена)

@@ -382,6 +382,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Құм: 3-бөлім",
 			TitleRu:        "Дюна: Часть третья",
 			Description:    "The epic conclusion to Denis Villeneuve's Dune trilogy. Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.",
+			PosterURL:      "https://image.tmdb.org/t/p/w500/d5NXSklXo0qyIYkgV94XAgMIckC.jpg", // ← ДОБАВЛЕНО
 			Director:       "Denis Villeneuve",
 			Cast:           []string{"Timothée Chalamet", "Zendaya", "Austin Butler", "Florence Pugh"},
 			Genres:         []string{"Sci-Fi", "Adventure", "Drama"},
@@ -401,6 +402,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Бэтмен 2",
 			TitleRu:        "Бэтмен 2",
 			Description:    "Batman continues his war on crime in Gotham City while facing new villains and uncovering deeper conspiracies.",
+			PosterURL:      "https://image.tmdb.org/t/p/w500/74xTEgt7R36Fpooo50r9T25onhq.jpg", // ← ДОБАВЛЕНО
 			Director:       "Matt Reeves",
 			Cast:           []string{"Robert Pattinson", "Zoë Kravitz", "Colin Farrell", "Paul Dano"},
 			Genres:         []string{"Action", "Crime", "Thriller"},
@@ -420,6 +422,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Аватар: От және Күл",
 			TitleRu:        "Аватар: Огонь и Пепел",
 			Description:    "The third installment in James Cameron's Avatar saga explores new regions of Pandora and introduces the Ash People.",
+			PosterURL:      "https://i.ytimg.com/vi/nb_fFj_0rq8/maxresdefault.jpg", // ← ДОБАВЛЕНО
 			Director:       "James Cameron",
 			Cast:           []string{"Sam Worthington", "Zoe Saldaña", "Sigourney Weaver", "Kate Winslet"},
 			Genres:         []string{"Sci-Fi", "Adventure", "Fantasy"},
@@ -439,6 +442,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Мүмкін емес миссия 8",
 			TitleRu:        "Миссия невыполнима 8",
 			Description:    "Ethan Hunt and his team face their most dangerous mission yet in the thrilling conclusion to the franchise.",
+			PosterURL:      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSIQnVwg6itVzcxg0K1xwhB5VaXkyGWLmO07w&s", // ← ДОБАВЛЕНО
 			Director:       "Christopher McQuarrie",
 			Cast:           []string{"Tom Cruise", "Hayley Atwell", "Ving Rhames", "Simon Pegg"},
 			Genres:         []string{"Action", "Thriller", "Adventure"},
@@ -458,6 +462,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Носферату",
 			TitleRu:        "Носферату",
 			Description:    "Robert Eggers' gothic horror reimagining of the classic vampire tale. A haunting story of obsession between a haunted young woman and the terrifying vampire infatuated with her.",
+			PosterURL:      "https://upload.wikimedia.org/wikipedia/ru/b/b7/Nosferatu%2C_eine_Symphonie_des_Grauens.jpg", // ← ДОБАВЛЕНО
 			Director:       "Robert Eggers",
 			Cast:           []string{"Bill Skarsgård", "Lily-Rose Depp", "Nicholas Hoult", "Willem Dafoe"},
 			Genres:         []string{"Horror", "Fantasy", "Drama"},
@@ -477,6 +482,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Ішкі әлем 2",
 			TitleRu:        "Головоломка 2",
 			Description:    "Riley enters her teenage years and new emotions appear in Headquarters, creating chaos as they navigate the complexities of growing up.",
+			PosterURL:      "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg", // ← ДОБАВЛЕНО
 			Director:       "Kelsey Mann",
 			Cast:           []string{"Amy Poehler", "Maya Hawke", "Phyllis Smith", "Lewis Black"},
 			Genres:         []string{"Animation", "Adventure", "Comedy", "Family"},
@@ -496,6 +502,7 @@ func seedMovies(ctx context.Context) {
 			TitleKz:        "Гладиатор II",
 			TitleRu:        "Гладиатор II",
 			Description:    "Years after witnessing the death of Maximus at the hands of his uncle, Lucius must enter the Colosseum after the powerful emperors of Rome conquer his home.",
+			PosterURL:      "https://upload.wikimedia.org/wikipedia/ru/6/68/%D0%93%D0%BB%D0%B0%D0%B4%D0%B8%D0%B0%D1%82%D0%BE%D1%80_2.jpg", // ← ДОБАВЛЕНО
 			Director:       "Ridley Scott",
 			Cast:           []string{"Paul Mescal", "Denzel Washington", "Pedro Pascal", "Connie Nielsen"},
 			Genres:         []string{"Action", "Adventure", "Drama"},
@@ -511,10 +518,12 @@ func seedMovies(ctx context.Context) {
 			CreatedAt:      time.Now(),
 		},
 		{
-			Title:          "Wicked",
-			TitleKz:        "Зұлым",
-			TitleRu:        "Злая",
-			Description:    "The untold story of the witches of Oz. A vivid reimagining of the classic Wizard of Oz tale, exploring the complex friendship between Elphaba and Glinda.",
+			Title:       "Wicked",
+			TitleKz:     "Зұлым",
+			TitleRu:     "Злая",
+			Description: "The untold story of the witches of Oz. A vivid reimagining of the classic Wizard of Oz tale, exploring the complex friendship between Elphaba and Glinda.",
+			PosterURL:   "https://upload.wikimedia.org/wikipedia/ru/0/00/Wicked_%282024%29_poster.jpg", // ← ДОБАВЛЕНО
+
 			Director:       "Jon M. Chu",
 			Cast:           []string{"Cynthia Erivo", "Ariana Grande", "Michelle Yeoh", "Jeff Goldblum"},
 			Genres:         []string{"Musical", "Fantasy", "Romance"},
