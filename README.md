@@ -55,3 +55,78 @@ npm install
 ```
 npm run dev
 ```
+
+# 📂 Project structure
+.
+├── backend
+│   ├── cmd
+│   │   └── main.go
+│   ├── config
+│   │   ├── config.go
+│   │   └── database.go
+│   ├── go.mod
+│   ├── go.sum
+│   ├── handlers
+│   │   ├── analytics.go
+│   │   ├── auth.go
+│   │   ├── bookings.go
+│   │   ├── cinemas.go
+│   │   ├── movies.go
+│   │   └── showtimes.go
+│   ├── middleware
+│   │   ├── auth.go
+│   │   ├── error.go
+│   │   └── role.go
+│   ├── models
+│   │   ├── booking.go
+│   │   ├── cinema.go
+│   │   ├── hall.go
+│   │   ├── movie.go
+│   │   ├── showtime.go
+│   │   ├── transaction.go
+│   │   └── user.go
+│   ├── routes
+│   │   └── routes.go
+│   ├── scripts
+│   │   ├── create_indexes.go
+│   │   └── seed.go
+│   └── utils
+│       ├── jwt.go
+│       ├── response.go
+│       └── validation.go
+└── frontend
+    ├── README.md
+    ├── index.html
+    ├── package-lock.json
+    ├── package.json
+    ├── public
+    │   └── vite.svg
+    ├── src
+    │   ├── App.vue
+    │   ├── assets
+    │   │   └── vue.svg
+    │   ├── components
+    │   │   ├── BookingCard.vue
+    │   │   ├── MovieCard.vue
+    │   │   ├── Navbar.vue
+    │   │   └── SeatMap.vue
+    │   ├── main.js
+    │   ├── router
+    │   │   └── index.js
+    │   ├── services
+    │   │   └── api.js
+    │   ├── store
+    │   │   └── auth.js
+    │   ├── style.css
+    │   ├── utils
+    │   │   └── formatters.js
+    │   └── views
+    │       ├── Home.vue
+    │       ├── Login.vue
+    │       ├── MovieDetails.vue
+    │       ├── Profile.vue
+    │       └── SeatSelection.vue
+    └── vite.config.js
+
+# 📄 License
+The project is distributed under the MIT license.
