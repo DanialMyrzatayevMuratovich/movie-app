@@ -29,12 +29,18 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Токен истек или невалиден
+    const status = error.response?.status
+
+    if (status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'
+    } else if (status === 403) {
+      window.location.href = `/error?code=403&from=${encodeURIComponent(window.location.pathname)}`
+    } else if (status === 500 || status === 502 || status === 503) {
+      window.location.href = `/error?code=${status}&from=${encodeURIComponent(window.location.pathname)}`
     }
+
     return Promise.reject(error)
   }
 )
@@ -85,6 +91,11 @@ export default {
   },
   cancelBooking(id) {
     return api.delete(`/bookings/${id}`)
+  },
+
+  // Wallet
+  topUpWallet(data) {
+    return api.post('/wallet/topup', data)
   },
 
   // Analytics

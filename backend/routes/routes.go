@@ -49,6 +49,9 @@ func SetupRoutes(router *gin.Engine) {
 			authorized.GET("/profile", handlers.GetProfile)
 			authorized.PUT("/profile", handlers.UpdateProfile)
 
+			// Wallet
+			authorized.POST("/wallet/topup", handlers.TopUpWallet)
+
 			// Bookings (только для авторизованных пользователей)
 			authorized.POST("/bookings", handlers.CreateBooking)
 			authorized.GET("/bookings/my", handlers.GetMyBookings)

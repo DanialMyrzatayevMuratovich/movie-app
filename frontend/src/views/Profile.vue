@@ -25,6 +25,9 @@
                 {{ formatCurrency(authStore.user?.wallet?.balance || 0) }}
               </div>
             </div>
+            <router-link to="/topup" class="btn btn-primary topup-btn">
+              + Пополнить
+            </router-link>
           </div>
         </div>
       </div>
@@ -62,7 +65,7 @@
         <div v-else-if="bookings.length > 0" class="bookings-list">
           <BookingCard
             v-for="booking in bookings"
-            :key="booking._id"
+            :key="booking._id || booking.id"
             :booking="booking"
             :movie-title="getMovieTitle(booking.showtimeId)"
             @confirm="confirmBooking"
@@ -281,6 +284,12 @@ onMounted(async () => {
   font-size: 32px;
   font-weight: bold;
   color: var(--primary);
+}
+
+.topup-btn {
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .bookings-section {

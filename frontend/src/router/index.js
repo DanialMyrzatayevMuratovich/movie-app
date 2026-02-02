@@ -4,6 +4,9 @@ import MovieDetails from '../views/MovieDetails.vue'
 import SeatSelection from '../views/SeatSelection.vue'
 import Profile from '../views/Profile.vue'
 import Login from '../views/Login.vue'
+import TopUp from '../views/TopUp.vue'
+import NotFound from '../views/NotFound.vue'
+import ServerError from '../views/ServerError.vue'
 
 const routes = [
   {
@@ -29,9 +32,25 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/topup',
+    name: 'TopUp',
+    component: TopUp,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: Login
+  },
+  {
+    path: '/error',
+    name: 'ServerError',
+    component: ServerError
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: NotFound
   }
 ]
 

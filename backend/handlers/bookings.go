@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -28,7 +27,7 @@ type SeatRequest struct {
 	Number int    `json:"number" binding:"required"`
 }
 
-// CreateBooking - создать бронь (с MongoDB Transaction)
+// CreateBooking - создать бронь
 func CreateBooking(c *gin.Context) {
 	// 1. Получить userID из контекста
 	userID, _ := c.Get("userId")
@@ -59,230 +58,212 @@ func CreateBooking(c *gin.Context) {
 		return
 	}
 
-	// === НАЧАЛО MONGODB TRANSACTION ===
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Начать сессию
-	session, err := config.MongoClient.StartSession()
+	// === ШАГ 1: Найти сеанс и проверить доступность мест ===
+
+	showtimesCollection := config.GetCollection("showtimes")
+
+	var showtime models.Showtime
+	err = showtimesCollection.FindOne(ctx, bson.M{"_id": showtimeID}).Decode(&showtime)
 	if err != nil {
-		utils.ErrorResponse(c, 500, "Failed to start database session")
+		utils.ErrorResponse(c, 404, "Showtime not found")
 		return
 	}
-	defer session.EndSession(ctx)
 
-	// Переменные для результата
-	var createdBooking models.Booking
+	// Проверить что сеанс в будущем
+	if showtime.StartTime.Before(time.Now()) {
+		utils.ErrorResponse(c, 400, "Showtime has already started")
+		return
+	}
 
-	// Выполнить транзакцию
-	err = mongo.WithSession(ctx, session, func(sc mongo.SessionContext) error {
-		// === ШАГ 1: Найти сеанс и проверить доступность мест ===
+	// === ШАГ 2: Проверить что места доступны ===
 
-		showtimesCollection := config.GetCollection("showtimes")
+	// Попытаться получить информацию о зале
+	hallsCollection := config.GetCollection("halls")
+	var hall models.Hall
+	hallFound := true
+	err = hallsCollection.FindOne(ctx, bson.M{"_id": showtime.HallID}).Decode(&hall)
+	if err != nil {
+		// Зал не найден в БД - используем базовую цену сеанса
+		hallFound = false
+	}
 
-		var showtime models.Showtime
-		err := showtimesCollection.FindOne(sc, bson.M{"_id": showtimeID}).Decode(&showtime)
-		if err != nil {
-			return fmt.Errorf("showtime not found")
+	// Создать map забронированных мест для быстрой проверки
+	bookedSeatsMap := make(map[string]bool)
+	for _, seat := range showtime.BookedSeats {
+		key := fmt.Sprintf("%s-%d", seat.Row, seat.Number)
+		bookedSeatsMap[key] = true
+	}
+
+	// Проверить каждое запрошенное место
+	var totalAmount float64
+	var bookingSeats []models.BookingSeat
+
+	for _, seatReq := range req.Seats {
+		key := fmt.Sprintf("%s-%d", seatReq.Row, seatReq.Number)
+
+		// Проверить что место не занято
+		if bookedSeatsMap[key] {
+			utils.ErrorResponse(c, 400, fmt.Sprintf("Seat %s-%d is already booked", seatReq.Row, seatReq.Number))
+			return
 		}
 
-		// Проверить что сеанс в будущем
-		if showtime.StartTime.Before(time.Now()) {
-			return fmt.Errorf("showtime has already started")
-		}
+		// Определить цену места
+		var seatPrice float64
 
-		// === ШАГ 2: Проверить что места доступны ===
-
-		// Получить информацию о зале
-		hallsCollection := config.GetCollection("halls")
-		var hall models.Hall
-		err = hallsCollection.FindOne(sc, bson.M{"_id": showtime.HallID}).Decode(&hall)
-		if err != nil {
-			return fmt.Errorf("hall not found")
-		}
-
-		// Создать map забронированных мест для быстрой проверки
-		bookedSeatsMap := make(map[string]bool)
-		for _, seat := range showtime.BookedSeats {
-			key := fmt.Sprintf("%s-%d", seat.Row, seat.Number)
-			bookedSeatsMap[key] = true
-		}
-
-		// Проверить каждое запрошенное место
-		var totalAmount float64
-		var bookingSeats []models.BookingSeat
-
-		for _, seatReq := range req.Seats {
-			key := fmt.Sprintf("%s-%d", seatReq.Row, seatReq.Number)
-
-			// Проверить что место не занято
-			if bookedSeatsMap[key] {
-				return fmt.Errorf("seat %s-%d is already booked", seatReq.Row, seatReq.Number)
-			}
-
+		if hallFound {
 			// Найти место в зале и получить цену
-			var seatPrice float64
-			seatFound := false
-
+			seatFoundInHall := false
 			for _, hallSeat := range hall.Seats {
 				if hallSeat.Row == seatReq.Row && hallSeat.Number == seatReq.Number {
-					seatPrice = hallSeat.Price + showtime.BasePrice // Цена места + базовая цена сеанса
-					seatFound = true
+					seatPrice = hallSeat.Price + showtime.BasePrice
+					seatFoundInHall = true
 					break
 				}
 			}
-
-			if !seatFound {
-				return fmt.Errorf("seat %s-%d does not exist in this hall", seatReq.Row, seatReq.Number)
+			if !seatFoundInHall {
+				// Место не найдено в зале - используем базовую цену
+				seatPrice = showtime.BasePrice
 			}
-
-			// Добавить место в бронь
-			bookingSeats = append(bookingSeats, models.BookingSeat{
-				Row:    seatReq.Row,
-				Number: seatReq.Number,
-				Price:  seatPrice,
-			})
-
-			totalAmount += seatPrice
+		} else {
+			// Зал не найден - используем базовую цену
+			seatPrice = showtime.BasePrice
 		}
 
-		// === ШАГ 3: Проверить баланс (если оплата через wallet) ===
+		// Добавить место в бронь
+		bookingSeats = append(bookingSeats, models.BookingSeat{
+			Row:    seatReq.Row,
+			Number: seatReq.Number,
+			Price:  seatPrice,
+		})
 
-		usersCollection := config.GetCollection("users")
+		totalAmount += seatPrice
+	}
+
+	// === ШАГ 3: Проверить баланс (если оплата через wallet) ===
+
+	usersCollection := config.GetCollection("users")
+
+	if req.PaymentMethod == "wallet" {
 		var user models.User
-
-		if req.PaymentMethod == "wallet" {
-			err = usersCollection.FindOne(sc, bson.M{"_id": userObjectID}).Decode(&user)
-			if err != nil {
-				return fmt.Errorf("user not found")
-			}
-
-			if user.Wallet.Balance < totalAmount {
-				return fmt.Errorf("insufficient wallet balance. Required: %.2f KZT, Available: %.2f KZT",
-					totalAmount, user.Wallet.Balance)
-			}
-		}
-
-		// === ШАГ 4: Создать бронь ===
-
-		bookingNumber := fmt.Sprintf("BK-%s-%06d",
-			time.Now().Format("20060102"),
-			time.Now().UnixNano()%1000000)
-
-		newBooking := models.Booking{
-			BookingNumber: bookingNumber,
-			UserID:        userObjectID,
-			ShowtimeID:    showtimeID,
-			Seats:         bookingSeats,
-			TotalAmount:   totalAmount,
-			Status:        "pending", // Изначально pending
-			Payment: models.Payment{
-				Method: req.PaymentMethod,
-				Status: "pending",
-			},
-			QRCode:    fmt.Sprintf("QR-%s", bookingNumber),
-			ExpiresAt: time.Now().Add(15 * time.Minute), // Истекает через 15 минут
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		// Если оплата через wallet - сразу подтверждаем
-		if req.PaymentMethod == "wallet" {
-			newBooking.Status = "confirmed"
-			newBooking.Payment.Status = "completed"
-			newBooking.Payment.PaidAt = time.Now()
-			newBooking.Payment.TransactionID = fmt.Sprintf("TXN-%s", time.Now().Format("20060102150405"))
-		}
-
-		bookingsCollection := config.GetCollection("bookings")
-		result, err := bookingsCollection.InsertOne(sc, newBooking)
+		err = usersCollection.FindOne(ctx, bson.M{"_id": userObjectID}).Decode(&user)
 		if err != nil {
-			return fmt.Errorf("failed to create booking")
+			utils.ErrorResponse(c, 404, "User not found")
+			return
 		}
 
-		newBooking.ID = result.InsertedID.(primitive.ObjectID)
-		createdBooking = newBooking
-
-		// === ШАГ 5: Обновить сеанс (добавить забронированные места) ===
-
-		// Использовать $push для добавления мест в bookedSeats
-		// Использовать $inc для уменьшения availableSeats
-
-		updateSeats := bson.A{}
-		for _, seat := range req.Seats {
-			updateSeats = append(updateSeats, models.BookedSeat{
-				Row:    seat.Row,
-				Number: seat.Number,
-				Status: "booked",
-			})
+		if user.Wallet.Balance < totalAmount {
+			utils.ErrorResponse(c, 400, fmt.Sprintf("Insufficient wallet balance. Required: %.2f KZT, Available: %.2f KZT",
+				totalAmount, user.Wallet.Balance))
+			return
 		}
+	}
 
-		_, err = showtimesCollection.UpdateOne(
-			sc,
-			bson.M{"_id": showtimeID},
+	// === ШАГ 4: Создать бронь ===
+
+	bookingNumber := fmt.Sprintf("BK-%s-%06d",
+		time.Now().Format("20060102"),
+		time.Now().UnixNano()%1000000)
+
+	newBooking := models.Booking{
+		BookingNumber: bookingNumber,
+		UserID:        userObjectID,
+		ShowtimeID:    showtimeID,
+		Seats:         bookingSeats,
+		TotalAmount:   totalAmount,
+		Status:        "pending",
+		Payment: models.Payment{
+			Method: req.PaymentMethod,
+			Status: "pending",
+		},
+		QRCode:    fmt.Sprintf("QR-%s", bookingNumber),
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	// Если оплата через wallet - сразу подтверждаем
+	if req.PaymentMethod == "wallet" {
+		newBooking.Status = "confirmed"
+		newBooking.Payment.Status = "completed"
+		newBooking.Payment.PaidAt = time.Now()
+		newBooking.Payment.TransactionID = fmt.Sprintf("TXN-%s", time.Now().Format("20060102150405"))
+	}
+
+	bookingsCollection := config.GetCollection("bookings")
+	result, err := bookingsCollection.InsertOne(ctx, newBooking)
+	if err != nil {
+		utils.ErrorResponse(c, 500, "Failed to create booking")
+		return
+	}
+
+	newBooking.ID = result.InsertedID.(primitive.ObjectID)
+
+	// === ШАГ 5: Обновить сеанс (добавить забронированные места) ===
+
+	updateSeats := bson.A{}
+	for _, seat := range req.Seats {
+		updateSeats = append(updateSeats, models.BookedSeat{
+			Row:    seat.Row,
+			Number: seat.Number,
+			Status: "booked",
+		})
+	}
+
+	_, err = showtimesCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": showtimeID},
+		bson.M{
+			"$push": bson.M{
+				"bookedSeats": bson.M{"$each": updateSeats},
+			},
+			"$inc": bson.M{
+				"availableSeats": -len(req.Seats),
+			},
+		},
+	)
+	if err != nil {
+		fmt.Printf("Warning: failed to update showtime seats: %v\n", err)
+	}
+
+	// === ШАГ 6: Списать с кошелька (если wallet) ===
+
+	if req.PaymentMethod == "wallet" {
+		_, err = usersCollection.UpdateOne(
+			ctx,
+			bson.M{"_id": userObjectID},
 			bson.M{
-				"$push": bson.M{
-					"bookedSeats": bson.M{"$each": updateSeats}, // $push для добавления в массив
-				},
 				"$inc": bson.M{
-					"availableSeats": -len(req.Seats), // $inc для уменьшения счетчика
+					"wallet.balance": -totalAmount,
 				},
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to update showtime")
+			fmt.Printf("Warning: failed to deduct from wallet: %v\n", err)
 		}
 
-		// === ШАГ 6: Списать с кошелька (если wallet) ===
-
-		if req.PaymentMethod == "wallet" {
-			// Использовать $inc для уменьшения баланса
-			_, err = usersCollection.UpdateOne(
-				sc,
-				bson.M{"_id": userObjectID},
-				bson.M{
-					"$inc": bson.M{
-						"wallet.balance": -totalAmount, // $inc с отрицательным значением
-					},
-				},
-			)
-			if err != nil {
-				return fmt.Errorf("failed to deduct from wallet")
-			}
-
-			// Создать запись транзакции
-			transactionsCollection := config.GetCollection("transactions")
-			transaction := models.Transaction{
-				UserID:      userObjectID,
-				Type:        "booking",
-				Amount:      -totalAmount, // Отрицательная сумма (списание)
-				BookingID:   newBooking.ID,
-				Status:      "completed",
-				Description: fmt.Sprintf("Booking payment for %s", bookingNumber),
-				CreatedAt:   time.Now(),
-			}
-
-			_, err = transactionsCollection.InsertOne(sc, transaction)
-			if err != nil {
-				return fmt.Errorf("failed to create transaction")
-			}
+		// Создать запись транзакции
+		transactionsCollection := config.GetCollection("transactions")
+		transaction := models.Transaction{
+			UserID:      userObjectID,
+			Type:        "booking",
+			Amount:      -totalAmount,
+			BookingID:   newBooking.ID,
+			Status:      "completed",
+			Description: fmt.Sprintf("Booking payment for %s", bookingNumber),
+			CreatedAt:   time.Now(),
 		}
 
-		// Коммит транзакции
-		return session.CommitTransaction(sc)
-	})
-
-	// === КОНЕЦ TRANSACTION ===
-
-	if err != nil {
-		// Транзакция провалилась - все откатилось автоматически
-		utils.ErrorResponse(c, 400, err.Error())
-		return
+		_, err = transactionsCollection.InsertOne(ctx, transaction)
+		if err != nil {
+			fmt.Printf("Warning: failed to create transaction record: %v\n", err)
+		}
 	}
 
 	// Успешно создано
-	utils.SuccessWithMessage(c, 201, "Booking created successfully", createdBooking)
+	utils.SuccessWithMessage(c, 201, "Booking created successfully", newBooking)
 }
 
 // GetMyBookings - получить мои брони
@@ -306,7 +287,7 @@ func GetMyBookings(c *gin.Context) {
 	skip := (page - 1) * limit
 
 	// Фильтр по статусу
-	status := c.Query("status") // ?status=confirmed
+	status := c.Query("status")
 
 	filter := bson.M{"userId": userObjectID}
 	if status != "" {
@@ -319,7 +300,7 @@ func GetMyBookings(c *gin.Context) {
 	findOptions := options.Find()
 	findOptions.SetSkip(int64(skip))
 	findOptions.SetLimit(int64(limit))
-	findOptions.SetSort(bson.D{{Key: "createdAt", Value: -1}}) // Новые первыми
+	findOptions.SetSort(bson.D{{Key: "createdAt", Value: -1}})
 
 	cursor, err := bookingsCollection.Find(ctx, filter, findOptions)
 	if err != nil {
@@ -337,19 +318,14 @@ func GetMyBookings(c *gin.Context) {
 	// Подсчет общего количества
 	total, _ := bookingsCollection.CountDocuments(ctx, filter)
 
-	// Получить детали сеансов (агрегация)
-	// Опционально: можно добавить lookup для получения информации о фильме и кинотеатре
-
 	utils.PaginatedResponse(c, bookings, page, limit, int(total))
 }
 
-// ConfirmBooking - подтвердить оплату брони (с Transaction)
+// ConfirmBooking - подтвердить оплату брони
 func ConfirmBooking(c *gin.Context) {
-	// Получить userID из контекста
 	userID, _ := c.Get("userId")
 	userObjectID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	// Получить booking ID
 	bookingIDStr := c.Param("id")
 	bookingID, err := primitive.ObjectIDFromHex(bookingIDStr)
 	if err != nil {
@@ -357,108 +333,84 @@ func ConfirmBooking(c *gin.Context) {
 		return
 	}
 
-	// === НАЧАЛО TRANSACTION ===
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	session, err := config.MongoClient.StartSession()
+	bookingsCollection := config.GetCollection("bookings")
+
+	// Найти бронь
+	var booking models.Booking
+	err = bookingsCollection.FindOne(ctx, bson.M{
+		"_id":    bookingID,
+		"userId": userObjectID,
+	}).Decode(&booking)
+
 	if err != nil {
-		utils.ErrorResponse(c, 500, "Failed to start database session")
+		utils.ErrorResponse(c, 404, "Booking not found")
 		return
 	}
-	defer session.EndSession(ctx)
 
-	var confirmedBooking models.Booking
+	if booking.Status == "confirmed" {
+		utils.ErrorResponse(c, 400, "Booking is already confirmed")
+		return
+	}
 
-	err = mongo.WithSession(ctx, session, func(sc mongo.SessionContext) error {
-		bookingsCollection := config.GetCollection("bookings")
+	if booking.Status == "cancelled" {
+		utils.ErrorResponse(c, 400, "Booking is cancelled")
+		return
+	}
 
-		// Найти бронь
-		var booking models.Booking
-		err := bookingsCollection.FindOne(sc, bson.M{
-			"_id":    bookingID,
-			"userId": userObjectID, // Проверить что бронь принадлежит пользователю
-		}).Decode(&booking)
+	if time.Now().After(booking.ExpiresAt) {
+		utils.ErrorResponse(c, 400, "Booking has expired")
+		return
+	}
 
-		if err != nil {
-			return fmt.Errorf("booking not found")
-		}
-
-		// Проверить статус
-		if booking.Status == "confirmed" {
-			return fmt.Errorf("booking is already confirmed")
-		}
-
-		if booking.Status == "cancelled" {
-			return fmt.Errorf("booking is cancelled")
-		}
-
-		// Проверить что не истекла
-		if time.Now().After(booking.ExpiresAt) {
-			return fmt.Errorf("booking has expired")
-		}
-
-		// Обновить статус брони (использовать $set)
-		_, err = bookingsCollection.UpdateOne(
-			sc,
-			bson.M{"_id": bookingID},
-			bson.M{
-				"$set": bson.M{
-					"status":                "confirmed",
-					"payment.status":        "completed",
-					"payment.paidAt":        time.Now(),
-					"payment.transactionId": fmt.Sprintf("TXN-%s", time.Now().Format("20060102150405")),
-					"updatedAt":             time.Now(),
-				},
+	// Обновить статус брони
+	_, err = bookingsCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": bookingID},
+		bson.M{
+			"$set": bson.M{
+				"status":                "confirmed",
+				"payment.status":        "completed",
+				"payment.paidAt":        time.Now(),
+				"payment.transactionId": fmt.Sprintf("TXN-%s", time.Now().Format("20060102150405")),
+				"updatedAt":             time.Now(),
 			},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to confirm booking")
-		}
-
-		// Если оплата была не через wallet, нужно создать транзакцию
-		if booking.Payment.Method != "wallet" {
-			transactionsCollection := config.GetCollection("transactions")
-			transaction := models.Transaction{
-				UserID:      userObjectID,
-				Type:        "booking",
-				Amount:      -booking.TotalAmount,
-				BookingID:   bookingID,
-				Status:      "completed",
-				Description: fmt.Sprintf("Booking payment for %s", booking.BookingNumber),
-				CreatedAt:   time.Now(),
-			}
-
-			_, err = transactionsCollection.InsertOne(sc, transaction)
-			if err != nil {
-				return fmt.Errorf("failed to create transaction")
-			}
-		}
-
-		// Получить обновленную бронь
-		bookingsCollection.FindOne(sc, bson.M{"_id": bookingID}).Decode(&confirmedBooking)
-
-		return session.CommitTransaction(sc)
-	})
-
-	// === КОНЕЦ TRANSACTION ===
-
+		},
+	)
 	if err != nil {
-		utils.ErrorResponse(c, 400, err.Error())
+		utils.ErrorResponse(c, 500, "Failed to confirm booking")
 		return
 	}
+
+	// Создать транзакцию если оплата не через wallet
+	if booking.Payment.Method != "wallet" {
+		transactionsCollection := config.GetCollection("transactions")
+		transaction := models.Transaction{
+			UserID:      userObjectID,
+			Type:        "booking",
+			Amount:      -booking.TotalAmount,
+			BookingID:   bookingID,
+			Status:      "completed",
+			Description: fmt.Sprintf("Booking payment for %s", booking.BookingNumber),
+			CreatedAt:   time.Now(),
+		}
+		transactionsCollection.InsertOne(ctx, transaction)
+	}
+
+	// Получить обновленную бронь
+	var confirmedBooking models.Booking
+	bookingsCollection.FindOne(ctx, bson.M{"_id": bookingID}).Decode(&confirmedBooking)
 
 	utils.SuccessWithMessage(c, 200, "Booking confirmed successfully", confirmedBooking)
 }
 
-// CancelBooking - отменить бронь (с Transaction и возвратом денег)
+// CancelBooking - отменить бронь с возвратом денег
 func CancelBooking(c *gin.Context) {
-	// Получить userID из контекста
 	userID, _ := c.Get("userId")
 	userObjectID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	// Получить booking ID
 	bookingIDStr := c.Param("id")
 	bookingID, err := primitive.ObjectIDFromHex(bookingIDStr)
 	if err != nil {
@@ -466,142 +418,103 @@ func CancelBooking(c *gin.Context) {
 		return
 	}
 
-	// === НАЧАЛО TRANSACTION ===
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	session, err := config.MongoClient.StartSession()
+	bookingsCollection := config.GetCollection("bookings")
+
+	// Найти бронь
+	var booking models.Booking
+	err = bookingsCollection.FindOne(ctx, bson.M{
+		"_id":    bookingID,
+		"userId": userObjectID,
+	}).Decode(&booking)
+
 	if err != nil {
-		utils.ErrorResponse(c, 500, "Failed to start database session")
+		utils.ErrorResponse(c, 404, "Booking not found")
 		return
 	}
-	defer session.EndSession(ctx)
 
-	err = mongo.WithSession(ctx, session, func(sc mongo.SessionContext) error {
-		bookingsCollection := config.GetCollection("bookings")
+	if booking.Status == "cancelled" {
+		utils.ErrorResponse(c, 400, "Booking is already cancelled")
+		return
+	}
 
-		// Найти бронь
-		var booking models.Booking
-		err := bookingsCollection.FindOne(sc, bson.M{
-			"_id":    bookingID,
-			"userId": userObjectID,
-		}).Decode(&booking)
-
-		if err != nil {
-			return fmt.Errorf("booking not found")
-		}
-
-		// Проверить что можно отменить
-		if booking.Status == "cancelled" {
-			return fmt.Errorf("booking is already cancelled")
-		}
-
-		// Проверить что сеанс еще не начался
-		showtimesCollection := config.GetCollection("showtimes")
-		var showtime models.Showtime
-		err = showtimesCollection.FindOne(sc, bson.M{"_id": booking.ShowtimeID}).Decode(&showtime)
-		if err != nil {
-			return fmt.Errorf("showtime not found")
-		}
-
-		// Нельзя отменить за 2 часа до начала
+	// Проверить что сеанс еще не начался
+	showtimesCollection := config.GetCollection("showtimes")
+	var showtime models.Showtime
+	err = showtimesCollection.FindOne(ctx, bson.M{"_id": booking.ShowtimeID}).Decode(&showtime)
+	if err == nil {
 		if time.Now().Add(2 * time.Hour).After(showtime.StartTime) {
-			return fmt.Errorf("cannot cancel booking less than 2 hours before showtime")
+			utils.ErrorResponse(c, 400, "Cannot cancel booking less than 2 hours before showtime")
+			return
 		}
+	}
 
-		// === ШАГ 1: Обновить статус брони ===
-
-		_, err = bookingsCollection.UpdateOne(
-			sc,
-			bson.M{"_id": bookingID},
-			bson.M{
-				"$set": bson.M{
-					"status":    "cancelled",
-					"updatedAt": time.Now(),
-				},
+	// ШАГ 1: Обновить статус брони
+	_, err = bookingsCollection.UpdateOne(
+		ctx,
+		bson.M{"_id": bookingID},
+		bson.M{
+			"$set": bson.M{
+				"status":    "cancelled",
+				"updatedAt": time.Now(),
 			},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to cancel booking")
-		}
+		},
+	)
+	if err != nil {
+		utils.ErrorResponse(c, 500, "Failed to cancel booking")
+		return
+	}
 
-		// === ШАГ 2: Освободить места в сеансе ===
-
-		// Использовать $pull для удаления мест из массива bookedSeats
-		// Использовать $inc для увеличения availableSeats
-
-		pullConditions := bson.A{}
-		for _, seat := range booking.Seats {
-			pullConditions = append(pullConditions, bson.M{
-				"row":    seat.Row,
-				"number": seat.Number,
-			})
-		}
-
-		_, err = showtimesCollection.UpdateOne(
-			sc,
+	// ШАГ 2: Освободить места в сеансе
+	for _, seat := range booking.Seats {
+		showtimesCollection.UpdateOne(
+			ctx,
 			bson.M{"_id": booking.ShowtimeID},
 			bson.M{
 				"$pull": bson.M{
 					"bookedSeats": bson.M{
-						"$or": pullConditions, // $pull для удаления из массива
+						"row":    seat.Row,
+						"number": seat.Number,
 					},
 				},
 				"$inc": bson.M{
-					"availableSeats": len(booking.Seats), // $inc для увеличения
+					"availableSeats": 1,
+				},
+			},
+		)
+	}
+
+	// ШАГ 3: Вернуть деньги (если оплачено)
+	if booking.Status == "confirmed" && booking.Payment.Status == "completed" {
+		usersCollection := config.GetCollection("users")
+
+		_, err = usersCollection.UpdateOne(
+			ctx,
+			bson.M{"_id": userObjectID},
+			bson.M{
+				"$inc": bson.M{
+					"wallet.balance": booking.TotalAmount,
 				},
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to release seats")
+			fmt.Printf("Warning: failed to refund to wallet: %v\n", err)
 		}
 
-		// === ШАГ 3: Вернуть деньги (если оплачено) ===
-
-		if booking.Status == "confirmed" && booking.Payment.Status == "completed" {
-			usersCollection := config.GetCollection("users")
-
-			// Вернуть деньги на кошелек (использовать $inc)
-			_, err = usersCollection.UpdateOne(
-				sc,
-				bson.M{"_id": userObjectID},
-				bson.M{
-					"$inc": bson.M{
-						"wallet.balance": booking.TotalAmount, // $inc с положительным значением
-					},
-				},
-			)
-			if err != nil {
-				return fmt.Errorf("failed to refund to wallet")
-			}
-
-			// Создать запись транзакции (refund)
-			transactionsCollection := config.GetCollection("transactions")
-			transaction := models.Transaction{
-				UserID:      userObjectID,
-				Type:        "refund",
-				Amount:      booking.TotalAmount, // Положительная сумма (возврат)
-				BookingID:   bookingID,
-				Status:      "completed",
-				Description: fmt.Sprintf("Refund for cancelled booking %s", booking.BookingNumber),
-				CreatedAt:   time.Now(),
-			}
-
-			_, err = transactionsCollection.InsertOne(sc, transaction)
-			if err != nil {
-				return fmt.Errorf("failed to create refund transaction")
-			}
+		// Создать запись транзакции (refund)
+		transactionsCollection := config.GetCollection("transactions")
+		transaction := models.Transaction{
+			UserID:      userObjectID,
+			Type:        "refund",
+			Amount:      booking.TotalAmount,
+			BookingID:   bookingID,
+			Status:      "completed",
+			Description: fmt.Sprintf("Refund for cancelled booking %s", booking.BookingNumber),
+			CreatedAt:   time.Now(),
 		}
-
-		return session.CommitTransaction(sc)
-	})
-
-	// === КОНЕЦ TRANSACTION ===
-
-	if err != nil {
-		utils.ErrorResponse(c, 400, err.Error())
-		return
+		transactionsCollection.InsertOne(ctx, transaction)
 	}
 
 	utils.SuccessWithMessage(c, 200, "Booking cancelled successfully. Refund processed.", gin.H{

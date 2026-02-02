@@ -38,7 +38,7 @@
       <button 
         v-if="booking.status === 'pending'" 
         class="btn btn-primary btn-sm"
-        @click="$emit('confirm', booking._id)"
+        @click="$emit('confirm', booking._id || booking.id)"
       >
         Подтвердить оплату
       </button>
@@ -54,16 +54,17 @@
       <button 
         v-if="booking.status !== 'cancelled'" 
         class="btn btn-secondary btn-sm"
-        @click="$emit('cancel', booking._id)"
+        @click="$emit('cancel', booking._id || booking.id)"
       >
         Отменить
       </button>
     </div>
 
     <div v-if="showQR && booking.status === 'confirmed'" class="qr-code">
-      <div class="qr-placeholder">
-        <span class="qr-icon">📱</span>
-        <div class="qr-text">{{ booking.qrCode }}</div>
+      <div class="qr-content">
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR Code" class="qr-image" />
+        <div v-else class="qr-loading">Генерация QR...</div>
+        <div class="qr-text">{{ booking.qrCode || booking.bookingNumber }}</div>
         <p class="qr-hint">Покажите этот код на входе</p>
       </div>
     </div>
@@ -71,7 +72,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import QRCode from 'qrcode'
 import { formatDate, formatCurrency } from '../utils/formatters'
 
 const props = defineProps({
@@ -88,6 +90,22 @@ const props = defineProps({
 defineEmits(['confirm', 'cancel'])
 
 const showQR = ref(false)
+const qrDataUrl = ref('')
+
+watch(showQR, async (visible) => {
+  if (visible && !qrDataUrl.value) {
+    const qrData = props.booking.qrCode || props.booking.bookingNumber || (props.booking._id || props.booking.id)
+    try {
+      qrDataUrl.value = await QRCode.toDataURL(String(qrData), {
+        width: 200,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+    } catch (err) {
+      console.error('QR generation failed:', err)
+    }
+  }
+})
 
 const getStatusText = (status) => {
   const statusMap = {
@@ -252,15 +270,27 @@ const getPaymentMethod = () => {
   text-align: center;
 }
 
-.qr-placeholder {
+.qr-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
 }
 
-.qr-icon {
-  font-size: 64px;
+.qr-image {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+}
+
+.qr-loading {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-gray);
+  font-size: 14px;
 }
 
 .qr-text {

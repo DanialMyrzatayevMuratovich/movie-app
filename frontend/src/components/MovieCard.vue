@@ -72,8 +72,9 @@ const formats = computed(() => {
 })
 
 const goToMovie = () => {
-  if (props.movie && props.movie._id) {
-    router.push(`/movie/${props.movie._id}`)
+  const movieId = props.movie?._id || props.movie?.id
+  if (movieId) {
+    router.push(`/movie/${movieId}`)
   } else {
     console.error('Movie ID is missing:', props.movie)
   }

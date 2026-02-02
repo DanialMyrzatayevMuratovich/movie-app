@@ -11,9 +11,11 @@
         <!-- Navigation Links -->
         <div class="navbar-links">
           <router-link to="/" class="nav-link">Фильмы</router-link>
-          
+          <a href="/Diagram.html" target="_blank" class="nav-link">Диаграмма</a>
+
           <template v-if="authStore.isAuthenticated">
             <router-link to="/profile" class="nav-link">Мои брони</router-link>
+            <router-link to="/topup" class="nav-link">Пополнить</router-link>
             
             <!-- User Menu -->
             <div class="user-menu">

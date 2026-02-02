@@ -43,7 +43,7 @@
 
       <!-- Movies Grid -->
       <div v-else-if="movies.length > 0" class="movies-grid">
-        <MovieCard v-for="movie in movies" :key="movie._id" :movie="movie" />
+        <MovieCard v-for="movie in movies" :key="movie._id || movie.id" :movie="movie" />
       </div>
 
       <!-- No Results -->

@@ -61,6 +61,10 @@
                 <strong>Дата выхода:</strong> {{ formatDate(movie.releaseDate) }}
               </div>
             </div>
+
+            <button class="btn btn-trailer" @click="openTrailer">
+              ▶ Смотреть трейлер
+            </button>
           </div>
         </div>
       </div>
@@ -149,6 +153,25 @@
         </router-link>
       </div>
     </div>
+
+    <!-- Trailer Modal -->
+    <div v-if="showTrailer" class="trailer-overlay" @click.self="closeTrailer">
+      <div class="trailer-modal">
+        <div class="trailer-header">
+          <h3>{{ movie?.title }} - Трейлер</h3>
+          <button class="trailer-close" @click="closeTrailer">✕</button>
+        </div>
+        <div class="trailer-video">
+          <iframe
+            v-if="trailerUrl"
+            :src="trailerUrl"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -166,6 +189,8 @@ const showtimes = ref([])
 const loading = ref(true)
 const loadingShowtimes = ref(true)
 const selectedDate = ref(null)
+const showTrailer = ref(false)
+const trailerUrl = ref('')
 
 const availableDates = computed(() => {
   const dates = new Set()
@@ -253,6 +278,41 @@ const formatShortDate = (dateStr) => {
   }
 
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+}
+
+const trailerMap = {
+  'Dune 3': { url: 'https://www.youtube.com/watch?v=OyJakLSEUyE&t=1s', external: true },
+  'The Batman 2': { id: 'T7_zMl_ZhdQ' },
+  'Avatar: Fire and Ash': { id: 'nb_fFj_0rq8' },
+  'Mission: Impossible 8': { id: 'CI2u1Pf7b6c' },
+  'Nosferatu': { id: 'nulvWqYUM8k' },
+  'Inside Out 2': { id: 'L4DrolmDxmw' },
+  'Gladiator II': { id: 'wL3mZn0YeIw' },
+  'Wicked': { id: '6COmYeLsz4c' }
+}
+
+const openTrailer = () => {
+  if (movie.value) {
+    const trailer = trailerMap[movie.value.title]
+    if (trailer?.external) {
+      window.open(trailer.url, '_blank')
+      return
+    }
+    if (trailer?.id) {
+      trailerUrl.value = `https://www.youtube.com/embed/${trailer.id}?autoplay=1`
+    } else {
+      const query = encodeURIComponent(movie.value.title + ' official trailer')
+      trailerUrl.value = `https://www.youtube.com/embed?listType=search&list=${query}`
+    }
+    showTrailer.value = true
+    document.body.style.overflow = 'hidden'
+  }
+}
+
+const closeTrailer = () => {
+  showTrailer.value = false
+  trailerUrl.value = ''
+  document.body.style.overflow = ''
 }
 
 const handleImageError = (e) => {
@@ -423,6 +483,27 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-bottom: 24px;
+}
+
+.btn-trailer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #e50914, #b20710);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-trailer:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(229, 9, 20, 0.4);
 }
 
 .detail-item {
@@ -594,6 +675,76 @@ onMounted(() => {
 .error-state p {
   color: var(--text-gray);
   margin-bottom: 24px;
+}
+
+.trailer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.trailer-modal {
+  width: 100%;
+  max-width: 960px;
+  background-color: var(--dark-light);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.trailer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background-color: var(--dark);
+}
+
+.trailer-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.trailer-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--dark-lighter);
+  color: var(--text);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.trailer-close:hover {
+  background-color: var(--primary);
+}
+
+.trailer-video {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+}
+
+.trailer-video iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 @media (max-width: 768px) {
